@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es5",                         // Set the target JavaScript version
+    "lib": ["dom", "dom.iterable", "esnext"], // Include libraries
+    "allowJs": true,                          // Allow JavaScript files
+    "skipLibCheck": true,                     // Skip type checking for libraries
+    "esModuleInterop": true,                  // Handle ES module imports correctly
+    "allowSyntheticDefaultImports": true,     // Allow synthetic imports (like React default import)
+    "strict": true,                           // Enable all strict type-checking options
+    "forceConsistentCasingInFileNames": true, // Enforce consistent file naming
+    "module": "esnext",                       // Use ESNext modules
+    "moduleResolution": "node",               // Use Node.js module resolution strategy
+    "resolveJsonModule": true,                // Allow importing JSON files
+    "isolatedModules": true,                  // Ensure each file is compiled independently
+    "jsx": "react",                           // Enable JSX/TSX support for React
+  },
+  "include": ["src/**/*"],                    // Include your source files
+  "exclude": ["node_modules", "**/*.test.ts"] // Exclude tests and node_modules from compilation
+}
