@@ -22,7 +22,7 @@
     "elliptic": "^6.5.7",
     "express": "^4.21.0",
     "mongodb": "^6.9.0",
-    "pushdrop": "^0.1.63",
+    "pushdrop": "^0.1.64",
     "uhrp-url": "^0.1.10",
     "uuid": "^10.0.0"
   },
