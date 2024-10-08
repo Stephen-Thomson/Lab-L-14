@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@bsv/overlay": "^0.1.10",
     "dotenv": "^16.4.5",
     "pushdrop": "^0.1.64"
   }
