@@ -2,6 +2,12 @@ import { LookupService, LookupQuestion, LookupAnswer, LookupFormula } from '@bsv
 import { Script } from '@bsv/sdk'
 // import pushdrop from 'pushdrop'
 
+interface UHRPStorage {
+  saveRecord(record: any): Promise<void>;
+  getRecord(query: any): Promise<any>;
+  deleteRecord(id: string): Promise<void>;
+}
+
 /**
  * Implements a UHRP lookup service
  *

@@ -1,7 +1,9 @@
 import { Db } from 'mongodb';
-import { PushDrop } from 'pushdrop'; // Ensure PushDrop is correctly imported
-import { FileCommitment, QueryParams, FileCommitmentResponse } from './types.js'; // Import the types created in types.d.ts
-import { LookupQuestion, LookupAnswer, LookupFormula } from '@bsv/overlay'; // Ensure these types are correctly imported
+import pushdrop from 'pushdrop';
+import { FileCommitment, QueryParams, FileCommitmentResponse } from './types.js';
+import { LookupQuestion, LookupAnswer, LookupFormula } from '@bsv/overlay';
+
+const { PushDrop } = pushdrop;
 
 export class LookupService {
   private db: Db; // MongoDB instance
@@ -17,7 +19,7 @@ export class LookupService {
    */
   public async lookup(question: LookupQuestion): Promise<LookupAnswer | LookupFormula> {
     try {
-      const queryParams = this.convertQuestionToQueryParams(question); // Convert the question to your QueryParams format
+      const queryParams = this.convertQuestionToQueryParams(question);
       const results = await this.db
         .collection<FileCommitment>(this.collectionName)
         .find(queryParams)
@@ -27,10 +29,10 @@ export class LookupService {
           return {
               type: 'output-list', // Set the response type as an output list
               outputs: results.map(result => ({
-                  beef: [], // Assuming 'beef' data is not directly available in the results; adjust as needed
+                  beef: [],
                   outputIndex: result.outputIndex
               }))
-          }; // Return the data in the format expected by LookupAnswer
+          };
       } else {
           return {
               type: 'freeform', // Set the response type as freeform for error messages
@@ -56,10 +58,10 @@ private convertQuestionToQueryParams(question: LookupQuestion): QueryParams {
 
   // Check if the question contains a query object
   if (question.query && typeof question.query === 'object') {
-    // Cast the query to a known format for QueryParams (this can vary based on requirements)
+    // Cast the query to a known format for QueryParams
     const queryObject = question.query as Record<string, any>;
 
-    // Map specific fields from the question's query to the QueryParams fields as needed
+    // Map specific fields from the question's query to the QueryParams fields
     if (queryObject.uhrpUrl) {
       queryParams.uhrpUrl = queryObject.uhrpUrl;
     }
@@ -114,10 +116,10 @@ private convertQuestionToQueryParams(question: LookupQuestion): QueryParams {
       // Decode the output script using PushDrop to extract the metadata
       const decoded = PushDrop.decode(outputScript);
 
-      const uhrpUrl = decoded.fields[3]; // Assuming URL is in the 4th field
-      const retentionPeriod = parseInt(decoded.fields[5], 10); // Retention period as integer
-      const fileHash = decoded.fields[2]; // Assuming file hash is in the 3rd field
-      const size = parseInt(decoded.fields[6], 10); // File size as integer
+      const uhrpUrl = decoded.fields[3];
+      const retentionPeriod = parseInt(decoded.fields[5], 10);
+      const fileHash = decoded.fields[2];
+      const size = parseInt(decoded.fields[6], 10);
 
       // Create a new file commitment entry
       const commitment: FileCommitment = {

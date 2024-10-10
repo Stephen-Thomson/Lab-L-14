@@ -1,11 +1,11 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import bodyparser from 'body-parser';
-import { Engine, KnexStorage } from '@bsv/overlay'; // Adjust imports as necessary for the Engine setup
+import { Engine, KnexStorage } from '@bsv/overlay';
 import { LookupService } from '../../lookup-service/src/LookupService.js';
-import { UHRPTopicManager } from '../../topic-manager/src/UHRPTopicManager.js'; // Import UHRPTopicManager
+import { UHRPTopicManager } from '../../topic-manager/src/UHRPTopicManager.js';
 import { MongoClient } from 'mongodb';
-import Knex from 'knex'; // For KnexStorage
+import Knex from 'knex';
 
 dotenv.config();
 
@@ -15,10 +15,10 @@ app.use(bodyparser.raw({ limit: '1gb', type: 'application/octet-stream' }));
 
 // Load environment variables
 const {
-  PORT = 8080,
+  PORT = 8081, // Use the PORT specified in the .env file or default to 8081
   DB_CONNECTION = 'mongodb://localhost:27017/fileCommitmentsDB', // MongoDB connection
-  SERVER_PRIVATE_KEY, // Ensure this key is configured
-  HOSTING_DOMAIN, // Use this for hosting URL in the engine configuration
+  SERVER_PRIVATE_KEY,
+  HOSTING_DOMAIN,
 } = process.env;
 
 let db: any;
@@ -33,13 +33,13 @@ const connectToMongoDB = async () => {
   console.log('Connected to MongoDB');
 };
 
-// Set up Knex for storage
-const knex = Knex({
+// Set up Knex for MySQL storage
+const knexInstance = Knex({
   client: 'mysql',
   connection: {
     host: '127.0.0.1',
     user: 'root',
-    password: 'yourpassword',
+    password: 'your-password',
     database: 'overlay_storage',
   },
 });
@@ -51,35 +51,17 @@ const initializeOverlayService = async () => {
   // Instantiate the UHRP Topic Manager
   const uhrpTopicManager = new UHRPTopicManager();
 
-  // Assign any necessary properties to uhrpTopicManager here, if needed
+  // Create the engine with the required parameters
+  engine = new Engine(
+    { 'tm_uhrp': uhrpTopicManager },
+    { 'ls_uhrp': lookupService },
+    new KnexStorage(knexInstance),
+    "scripts only",
+    HOSTING_DOMAIN
+  );
 
-  // Create the knex instance for database storage
-  
-  // Initialize Knex instance
-// Initialize the Knex instance with your database configuration
-const knexInstance = Knex({
-  client: 'mysql', // or another client like 'pg' for PostgreSQL
-  connection: {
-      host: 'localhost',
-      user: 'your-username',
-      password: 'your-password',
-      database: 'your-database',
-  },
-});
-
-// Create the engine with the required parameters
-engine = new Engine(
-  { 'tm_uhrp': uhrpTopicManager }, // Managers: object containing the topic manager
-  { 'ls_uhrp': lookupService }, // LookupServices: object containing the lookup service
-  new KnexStorage(knexInstance), // Pass the Knex instance directly to KnexStorage
-  "scripts only", // Placeholder for ChainTracker
-  process.env.HOSTING_DOMAIN // Hosting URL: The URL for peer discovery, if applicable
-);
-
-console.log('Overlay service initialized with UHRP Topic Manager');
+  console.log('Overlay service initialized with UHRP Topic Manager');
 };
-
-
 
 // Middleware for CORS
 app.use((req, res, next) => {
@@ -113,7 +95,7 @@ app.post('/submit', async (req, res) => {
 app.post('/lookup', async (req, res) => {
   try {
     const query = req.body; // Expecting UHRP URL or retention period query
-    const result = await lookupService.findByUHRPUrl(query.uhrpUrl); // Adjust for query as needed
+    const result = await lookupService.findByUHRPUrl(query.uhrpUrl);
     res.status(200).json(result);
   } catch (error) {
     console.error('Lookup error:', error);
