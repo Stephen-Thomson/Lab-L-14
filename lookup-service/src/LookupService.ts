@@ -7,7 +7,7 @@ const { PushDrop } = pushdrop;
 
 export class LookupService {
   private db: Db; // MongoDB instance
-  private collectionName = 'fileCommitments'; // Name of the collection in MongoDB
+  private collectionName = 'commitments'; // Name of the collection in MongoDB
 
   constructor(db: Db) {
     this.db = db;
@@ -133,8 +133,9 @@ private convertQuestionToQueryParams(question: LookupQuestion): QueryParams {
       };
 
       // Insert into MongoDB
-      await this.db.collection(this.collectionName).insertOne(commitment);
+      const result = await this.db.collection(this.collectionName).insertOne(commitment);
       console.log('Admitted new file storage commitment:', commitment);
+      console.log('Insert result:', result);
     } catch (error) {
       console.error('Error processing admissibility event:', error);
     }

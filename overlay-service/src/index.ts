@@ -4,6 +4,7 @@ import bodyparser from 'body-parser';
 import { Engine, KnexStorage } from '@bsv/overlay';
 import { LookupService } from '../../lookup-service/src/LookupService.js';
 import { UHRPTopicManager } from '../../topic-manager/src/UHRPTopicManager.js';
+import { TopicManager } from '../../commitment-ui/src/TopicManager.js';
 import { MongoClient } from 'mongodb';
 import Knex from 'knex';
 
@@ -44,16 +45,16 @@ const knexInstance = Knex({
   },
 });
 
-// Initialize UHRP Topic Manager and Overlay Services Engine
+// Initialize the Topic Manager and Overlay Services Engine
 let engine: Engine; // Use `Engine` class from `@bsv/overlay`
 
 const initializeOverlayService = async () => {
-  // Instantiate the UHRP Topic Manager
-  const uhrpTopicManager = new UHRPTopicManager();
+  // Instantiate the UHRP Topic Manager (using the correct implementation)
+  const topicManager = new UHRPTopicManager();
 
   // Create the engine with the required parameters
   engine = new Engine(
-    { 'tm_uhrp': uhrpTopicManager },
+    { 'tm_uhrp': topicManager },
     { 'ls_uhrp': lookupService },
     new KnexStorage(knexInstance),
     "scripts only",
@@ -62,6 +63,7 @@ const initializeOverlayService = async () => {
 
   console.log('Overlay service initialized with UHRP Topic Manager');
 };
+
 
 // Middleware for CORS
 app.use((req, res, next) => {

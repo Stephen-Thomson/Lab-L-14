@@ -1,11 +1,16 @@
 import { PublicKey, Hash, Signature } from '@bsv/sdk';
+import { EventEmitter } from 'events'; // Import EventEmitter to handle events
 import { isValidURL } from './utils/utils'; // Helper function for URL validation
 
 const UHRP_PROTOCOL_ADDRESS = '1UHRPYnMHPuQ5Tgb3AF8JXqwKkmZVy5hG';
 
-export class TopicManager {
+export class TopicManager extends EventEmitter { // Extend EventEmitter
+  constructor() {
+    super(); // Call the constructor of EventEmitter
+  }
+
   // Decodes and validates the storage commitment token
-  public static evaluateCommitment(outputScript: Buffer, pubKey: PublicKey): boolean {
+  public evaluateCommitment(outputScript: Buffer, pubKey: PublicKey): boolean {
     try {
       console.log('Starting commitment evaluation...');
 
@@ -75,6 +80,14 @@ export class TopicManager {
       }
 
       console.log('Commitment is valid');
+
+      // Emit the admissibility event after the commitment is validated
+      this.emitAdmissibilityEvent({
+        txid: 'sample-txid',
+        outputIndex: 0,
+        outputScript: outputScript.toString('hex'),
+      });
+
       return true;
 
     } catch (error) {
@@ -89,8 +102,14 @@ export class TopicManager {
     }
   }
 
+  // Method to emit admissibility events
+  private emitAdmissibilityEvent(eventData: any): void {
+    console.log('Emitting admissibility event:', eventData);
+    this.emit('admissibility', eventData); // Emit the admissibility event
+  }
+
   // Decodes the PushDrop output script into individual fields
-  private static decodeOutputScript(outputScript: Buffer): Buffer[] {
+  private decodeOutputScript(outputScript: Buffer): Buffer[] {
     const fields = [];
     let i = 0;
 
@@ -111,9 +130,11 @@ export class TopicManager {
     return fields;
   }
 
-  private static isValidSHA256(hash: string): boolean {
+  private isValidSHA256(hash: string): boolean {
     const isValid = /^[a-f0-9]{64}$/.test(hash);
     console.log('Is valid SHA256 hash:', isValid, 'Hash:', hash); // Log SHA256 validation result
     return isValid;
   }
 }
+
+
