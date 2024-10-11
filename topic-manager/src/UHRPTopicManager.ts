@@ -42,7 +42,10 @@ export class UHRPTopicManager extends EventEmitter implements OverlayTopicManage
       const pubKey = this.getPublicKeyFromPrivateKey(); // Use derived public key from private key
 
       const outputScriptBuffer = Buffer.from(beef);
-      const fields = this.decodeOutputScript(outputScriptBuffer); // Use the custom decoding function
+      console.log('Output Script Buffer (Hex):', outputScriptBuffer.toString('hex'));
+    console.log('Output Script Buffer (UTF-8):', outputScriptBuffer.toString('utf8'));
+
+      const fields = this.decodeOutputScript(outputScriptBuffer); // Use pushdrop.decode
 
       console.log('Decoded Fields:', fields);
 
@@ -73,28 +76,41 @@ export class UHRPTopicManager extends EventEmitter implements OverlayTopicManage
     }
   }
 
-  /// Custom function to decode the output script into individual fields
-  private decodeOutputScript(outputScript: Buffer): Buffer[] {
-    const fields: Buffer[] = [];
-    let i = 0;
+  /// Updated to use pushdrop.decode to decode the output script into individual fields
+private decodeOutputScript(outputScript: Buffer): Buffer[] {
+  try {
+    // Convert the buffer to a hex string, as the decode function expects a script in hex format
+    const outputScriptHex = outputScript.toString('hex');
 
-    // Loop through the output script buffer to extract fields
-    while (i < outputScript.length) {
-      const length = outputScript[i]; // Assume the first byte represents the field length
-      const field = outputScript.slice(i + 1, i + 1 + length); // Extract the field based on length
-      fields.push(field);
-      i += 1 + length; // Move to the next field
+    // Use PushDrop to decode the output script with the correct parameters
+    const decodedObject = PushDrop.decode({
+      script: outputScriptHex,
+      fieldFormat: 'buffer', // Specify that we want the fields in buffer format
+    });
+
+    // If the decodedObject is undefined, it means the script was not a valid PushDrop script
+    if (!decodedObject) {
+      throw new Error('Invalid PushDrop script format');
     }
 
-    // Log the field lengths and raw data to debug potential misinterpretations
-    fields.forEach((field, index) => {
-      const fieldAsString = field.toString('utf8'); // For text-based fields
-      const fieldAsHex = field.toString('hex');     // For fields that should be hex
-      console.log(`Field ${index} length:`, field.length, 'Raw Data (UTF-8):', fieldAsString, 'Raw Data (Hex):', fieldAsHex);
+    const { fields } = decodedObject;
+
+    // Log the fields for debugging purposes
+    fields.forEach((field: Buffer, index: number) => {
+      console.log(
+        `Field ${index} length:`, 
+        field.length, 
+        'Raw Data (UTF-8):', field.toString('utf8'), 
+        'Raw Data (Hex):', field.toString('hex')
+      );
     });
 
     return fields;
+  } catch (error) {
+    console.error('Error decoding output script using pushdrop:', error);
+    throw new Error('Failed to decode output script.');
   }
+}
 
   private evaluateCommitment(fields: Buffer[], pubKey: PublicKey): boolean {
     try {
