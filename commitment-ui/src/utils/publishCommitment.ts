@@ -26,11 +26,13 @@ export async function publishCommitment({
   url,
   hostingMinutes,
   address,
+  topics = ['tm_uhrp'],
   serviceURL = 'https://staging-overlay.babbage.systems',
 }: {
   url: string;
   hostingMinutes: number;
   address: string;
+  topics?: string[];
   serviceURL?: string;
 }): Promise<string> {
   console.log('publishCommitment function is being called');

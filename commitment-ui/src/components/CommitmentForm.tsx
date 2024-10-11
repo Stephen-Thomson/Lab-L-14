@@ -87,7 +87,8 @@ const CommitmentForm: React.FC = () => {
         url: fileURL,
         hostingMinutes,
         address, // Use derived address
-        serviceURL: 'https://staging-overlay.babbage.systems',
+        topics: ['tm_uhrp'], // Include the topics array as expected by the server
+        serviceURL: 'http://localhost:8081',
       });
   
       console.log('publishCommitment result:', result);

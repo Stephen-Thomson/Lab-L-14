@@ -1,22 +1,28 @@
 import dotenv from 'dotenv';
+import path from 'path';
 import express from 'express';
 import bodyparser from 'body-parser';
+import { fileURLToPath } from 'url';
 import { Engine, KnexStorage } from '@bsv/overlay';
 import { LookupService } from '../../lookup-service/src/LookupService.js';
 import { UHRPTopicManager } from '../../topic-manager/src/UHRPTopicManager.js';
-import { TopicManager } from '../../commitment-ui/src/TopicManager.js';
 import { MongoClient } from 'mongodb';
 import Knex from 'knex';
 
-dotenv.config();
+// Get the __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
 app.use(bodyparser.json({ limit: '1gb', type: 'application/json' }));
 app.use(bodyparser.raw({ limit: '1gb', type: 'application/octet-stream' }));
 
+const connectionString = process.env.MYSQL_CONNECTION;
+
 // Load environment variables
 const {
-  PORT = 8081, // Use the PORT specified in the .env file or default to 8081
+  PORT = 8081,
   DB_CONNECTION = 'mongodb://localhost:27017/fileCommitmentsDB', // MongoDB connection
   SERVER_PRIVATE_KEY,
   HOSTING_DOMAIN,
@@ -34,30 +40,31 @@ const connectToMongoDB = async () => {
   console.log('Connected to MongoDB');
 };
 
-// Set up Knex for MySQL storage
+// Set up Knex for MySQL storage using the connection string from the .env file
 const knexInstance = Knex({
-  client: 'mysql',
-  connection: {
-    host: '127.0.0.1',
-    user: 'root',
-    password: 'your-password',
-    database: 'overlay_storage',
-  },
+  client: 'mysql2',
+  connection: connectionString,
 });
 
 // Initialize the Topic Manager and Overlay Services Engine
 let engine: Engine; // Use `Engine` class from `@bsv/overlay`
 
+// Topic Manager and Lookup Service setup
 const initializeOverlayService = async () => {
-  // Instantiate the UHRP Topic Manager (using the correct implementation)
   const topicManager = new UHRPTopicManager();
 
-  // Create the engine with the required parameters
+  // Listen for admissibility events emitted by TopicManager
+  topicManager.on('admissibility', async (eventData: any) => {
+    console.log('Admissibility event received:', eventData);
+    await lookupService.handleAdmissibilityEvent(eventData);
+  });
+
+  // Create the overlay engine
   engine = new Engine(
     { 'tm_uhrp': topicManager },
     { 'ls_uhrp': lookupService },
     new KnexStorage(knexInstance),
-    "scripts only",
+    'scripts only',
     HOSTING_DOMAIN
   );
 
@@ -82,7 +89,26 @@ app.use((req, res, next) => {
 // Submit transactions
 app.post('/submit', async (req, res) => {
   try {
-    const result = await engine.submit(req.body); // Submit through the overlay engine
+    console.log('Incoming request payload (raw buffer):', req.body); // Log the raw buffer payload
+    console.log('Request headers:', req.headers);
+
+    let parsedPayload;
+    if (Buffer.isBuffer(req.body)) {
+      // Convert the Buffer to a number array
+      const beefAsNumberArray = Array.from(req.body);
+
+      // Construct the parsed payload with beef as number array and topics as an array
+      parsedPayload = {
+        beef: beefAsNumberArray, // Use the number array representation of the buffer
+        topics: ['tm_uhrp'], // Ensure topics are provided correctly
+      };
+    } else {
+      throw new Error('Invalid buffer format: Expected a Buffer');
+    }
+
+    console.log('Parsed request payload:', parsedPayload); // Log the parsed payload
+
+    const result = await engine.submit(parsedPayload); // Submit through the overlay engine
     res.status(200).json(result);
   } catch (error) {
     console.error('Submit error:', error);
@@ -92,6 +118,10 @@ app.post('/submit', async (req, res) => {
     });
   }
 });
+
+
+
+
 
 // Lookup file storage commitments
 app.post('/lookup', async (req, res) => {

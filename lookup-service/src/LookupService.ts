@@ -112,15 +112,22 @@ private convertQuestionToQueryParams(question: LookupQuestion): QueryParams {
   public async handleAdmissibilityEvent(eventData: any): Promise<void> {
     try {
       const { txid, outputIndex, outputScript } = eventData;
-
+  
       // Decode the output script using PushDrop to extract the metadata
       const decoded = PushDrop.decode(outputScript);
-
+      console.log('Decoded PushDrop output script:', decoded);
+  
+      // Extract fields from the decoded data
       const uhrpUrl = decoded.fields[3];
       const retentionPeriod = parseInt(decoded.fields[5], 10);
       const fileHash = decoded.fields[2];
       const size = parseInt(decoded.fields[6], 10);
-
+  
+      // Validate extracted fields
+      if (!uhrpUrl || !fileHash || isNaN(retentionPeriod) || isNaN(size)) {
+        throw new Error('Invalid decoded data from output script');
+      }
+  
       // Create a new file commitment entry
       const commitment: FileCommitment = {
         txid,
@@ -131,15 +138,23 @@ private convertQuestionToQueryParams(question: LookupQuestion): QueryParams {
         size,
         createdAt: new Date(),
       };
-
+  
+      // Log the commitment object before inserting into MongoDB
+      console.log('Attempting to insert commitment into MongoDB:', commitment);
+  
       // Insert into MongoDB
       const result = await this.db.collection(this.collectionName).insertOne(commitment);
       console.log('Admitted new file storage commitment:', commitment);
-      console.log('Insert result:', result);
+      console.log('MongoDB insert result:', result);
     } catch (error) {
-      console.error('Error processing admissibility event:', error);
+      if (error instanceof Error) {
+        console.error('Error processing admissibility event:', error.message, error);
+      } else {
+        console.error('Error processing admissibility event:', error);
+      }
     }
   }
+  
 
   /**
    * Handle spend events to remove commitments from the database
