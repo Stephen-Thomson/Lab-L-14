@@ -4,9 +4,8 @@ import { fileURLToPath } from 'url';
 import { AdmittanceInstructions, TopicManager as OverlayTopicManager } from '@bsv/overlay';
 import { EventEmitter } from 'events';
 import PushDrop from 'pushdrop';
-import { PublicKey, Signature, Hash, PrivateKey } from '@bsv/sdk';
+import { PublicKey, Signature, Hash, PrivateKey, Transaction } from '@bsv/sdk';
 
-// Get the __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -16,58 +15,67 @@ const UHRP_PROTOCOL_ADDRESS = '1UHRPYnMHPuQ5Tgb3AF8JXqwKkmZVy5hG';
 export class UHRPTopicManager extends EventEmitter implements OverlayTopicManager {
   
   /**
-   * Validates whether a string is a valid URL.
-   * @param url - The string to be validated as a URL.
-   * @returns boolean - True if the string is a valid URL, false otherwise.
-   */
-  private isValidURL(url: string): boolean {
-    try {
-      new URL(url);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  /**
-   * Identify if the outputs are admissible depending on the particular protocol requirements
+   * Identifies admissible outputs in a given transaction.
    * @param beef - The transaction data in BEEF format
-   * @param previousCoins - The previous coins to consider
+   * @param previousCoins - Previous coins to consider (if needed)
    * @returns A promise that resolves with the admittance instructions
    */
   async identifyAdmissibleOutputs(beef: number[], previousCoins: number[]): Promise<AdmittanceInstructions> {
     try {
       console.log('Evaluating admissibility of outputs...');
-
-      const pubKey = this.getPublicKeyFromPrivateKey(); // Use derived public key from private key
-
-      const outputScriptBuffer = Buffer.from(beef);
-      console.log('Output Script Buffer (Hex):', outputScriptBuffer.toString('hex'));
-    console.log('Output Script Buffer (UTF-8):', outputScriptBuffer.toString('utf8'));
-
-      const fields = this.decodeOutputScript(outputScriptBuffer); // Use pushdrop.decode
-
-      console.log('Decoded Fields:', fields);
-
-      const isAdmissible = this.evaluateCommitment(fields, pubKey); // Use the extracted public key
-      if (isAdmissible) {
-        const txid = this.extractTxid(beef);
-        const outputIndex = this.extractOutputIndex(beef);
-
-        this.emitAdmissibilityEvent({
-          txid,
-          outputIndex,
-          outputScript: outputScriptBuffer.toString('hex'),
-        });
-
-        return {
-          outputsToAdmit: [outputIndex],
-          coinsToRetain: [],
-        };
+  
+      if (!beef || beef.length === 0) {
+        throw new Error('The input beef array is empty or invalid.');
       }
-
+  
+      const transaction = Transaction.fromBEEF(beef);
+      console.log('Parsed Transaction:', transaction);
+  
+      const admissibleOutputIndexes: number[] = [];
+  
+      // Iterate over each output to evaluate its admissibility
+      transaction.outputs.forEach((output, index) => {
+        console.log(`Evaluating output at index ${index}:`, output);
+      
+        const scriptHex = output.lockingScript.toHex();
+        if (!scriptHex || !scriptHex.startsWith('21')) {
+          console.warn(`Skipping decoding for non-pushdrop script at index ${index}`);
+          return; // Skip if not a valid PushDrop script
+        }
+      
+        const scriptBuffer = Buffer.from(scriptHex, 'hex');
+        console.log(`Script Buffer for Output ${index}:`, scriptBuffer.toString('hex'));
+      
+        try {
+          const decoded = PushDrop.decode({
+            script: scriptBuffer.toString('hex'),
+            fieldFormat: 'buffer',
+          });
+      
+          const decodedFields = decoded.fields || [];
+          if (!Array.isArray(decodedFields)) {
+            throw new Error('Invalid decoded fields.');
+          }
+      
+          console.log('Decoded Fields:', decodedFields);
+          const pubKey = this.getPublicKeyFromPrivateKey();
+      
+          const isAdmissible = this.evaluateCommitment(decodedFields, pubKey);
+          if (isAdmissible) {
+            admissibleOutputIndexes.push(index);
+            console.log(`Output ${index} is admissible.`);
+          } else {
+            console.log(`Output ${index} is not admissible.`);
+          }
+        } catch (error) {
+          console.error(`Error decoding script for output ${index}:`, error);
+        }
+      });
+      
+  
+      // Return admittance instructions with admissible outputs
       return {
-        outputsToAdmit: [],
+        outputsToAdmit: admissibleOutputIndexes,
         coinsToRetain: [],
       };
     } catch (error) {
@@ -76,136 +84,51 @@ export class UHRPTopicManager extends EventEmitter implements OverlayTopicManage
     }
   }
 
-  /// Updated to use pushdrop.decode to decode the output script into individual fields
-private decodeOutputScript(outputScript: Buffer): Buffer[] {
-  try {
-    // Convert the buffer to a hex string, as the decode function expects a script in hex format
-    const outputScriptHex = outputScript.toString('hex');
-
-    // Use PushDrop to decode the output script with the correct parameters
-    const decodedObject = PushDrop.decode({
-      script: outputScriptHex,
-      fieldFormat: 'buffer', // Specify that we want the fields in buffer format
-    });
-
-    // If the decodedObject is undefined, it means the script was not a valid PushDrop script
-    if (!decodedObject) {
-      throw new Error('Invalid PushDrop script format');
-    }
-
-    const { fields } = decodedObject;
-
-    // Log the fields for debugging purposes
-    fields.forEach((field: Buffer, index: number) => {
-      console.log(
-        `Field ${index} length:`, 
-        field.length, 
-        'Raw Data (UTF-8):', field.toString('utf8'), 
-        'Raw Data (Hex):', field.toString('hex')
-      );
-    });
-
-    return fields;
-  } catch (error) {
-    console.error('Error decoding output script using pushdrop:', error);
-    throw new Error('Failed to decode output script.');
-  }
-}
-
+  /**
+   * Evaluates the commitment fields for validity.
+   */
   private evaluateCommitment(fields: Buffer[], pubKey: PublicKey): boolean {
     try {
-      console.log('Starting commitment evaluation...');
-  
-      // Log all fields to see their contents before validation
-      console.log('Logging all fields in the output script:');
-      fields.forEach((field, index) => {
-        console.log(`Field ${index} - Length: ${field.length}`);
-        console.log(`Field ${index} Raw Data (UTF-8):`, field.toString('utf8'));
-        console.log(`Field ${index} Raw Data (Hex):`, field.toString('hex'));
-      });
-  
-      // Check each field to see if it matches the expected UHRP protocol address
-      console.log('Checking for the UHRP Protocol Address...');
-      let protocolAddressFieldFound = false;
-  
-      fields.forEach((field, index) => {
-        if (field.toString('utf8') === UHRP_PROTOCOL_ADDRESS) {
-          console.log(`Protocol Address found in Field ${index}: ${field.toString('utf8')}`);
-          protocolAddressFieldFound = true;
-        }
-      });
-  
-      if (!protocolAddressFieldFound) {
-        console.error('Protocol Address not found in any of the fields.');
-        throw new Error('Invalid UHRP protocol address.');
-      }
-  
-      // Step 1: Validate the UHRP protocol address
-      console.log('Field 0 (UHRP Protocol Address) Raw Data (UTF-8):', fields[0].toString('utf8'), 'Hex:', fields[0].toString('hex'));
       if (fields[0].toString('utf8') !== UHRP_PROTOCOL_ADDRESS) {
-        console.error('Invalid UHRP Protocol Address:', fields[0].toString('utf8'));
-        console.error('Expected UHRP Protocol Address:', UHRP_PROTOCOL_ADDRESS);
         throw new Error('Invalid UHRP protocol address.');
       }
   
-      // Step 2: Validate the SHA-256 hash
-      const hash = fields[2].toString('hex');
-      console.log('Extracted Hash:', hash);
-      if (!this.isValidSHA256(hash)) {
-        console.log('Invalid SHA256 Hash:', hash);
+      const hash = fields[2]?.toString('hex');
+      if (!hash || !this.isValidSHA256(hash)) {
         throw new Error('Invalid SHA256 hash.');
       }
   
-      // Step 3: Validate the URL
-      const url = fields[4].toString('utf8');
-      console.log('Extracted URL:', url);
-      if (!this.isValidURL(url)) {
-        console.log('Invalid URL:', url);
+      const url = fields[4]?.toString('utf8');
+      if (!url || !this.isValidURL(url)) {
         throw new Error('Invalid URL.');
       }
   
-      // Step 4: Check the expiry time
-      const expiryTime = parseInt(fields[5].toString('utf8'), 10);
-      const currentTime = Math.floor(Date.now() / 1000);
-      console.log('Expiry Time:', expiryTime, 'Current Time:', currentTime);
-      if (expiryTime <= currentTime) {
-        console.log('Timestamp expired:', expiryTime, 'is less than or equal to', currentTime);
-        throw new Error('Invalid or expired timestamp.');
+      const expiryTime = parseInt(fields[5]?.toString('utf8'), 10);
+      if (isNaN(expiryTime) || expiryTime <= Math.floor(Date.now() / 1000)) {
+        throw new Error('Timestamp expired.');
       }
   
-      // Step 5: Validate the file size
-      const fileSize = parseInt(fields[6].toString('utf8'), 10);
-      console.log('File Size:', fileSize);
-      if (fileSize <= 0) {
-        console.log('Invalid File Size:', fileSize);
+      const fileSize = parseInt(fields[6]?.toString('utf8'), 10);
+      if (isNaN(fileSize) || fileSize <= 0) {
         throw new Error('Invalid file size.');
       }
   
-      // Step 6: Verify the signature
-      const signatureBuffer = fields[7];
-      console.log('Signature Buffer (Hex):', signatureBuffer.toString('hex'));
+      // Check if the signature field exists and is a valid buffer
+      const signatureField = fields[7];
+      if (!signatureField || !Buffer.isBuffer(signatureField)) {
+        console.error('Signature field is missing or invalid.');
+        return false; // Skip this output as it is not admissible
+      }
   
+      const signature = Signature.fromDER(Array.from(signatureField));
       const message = Buffer.concat(fields.slice(0, 7));
-      console.log('Message to Verify (Concatenated Fields):', message.toString('hex'));
+      const sha256Message = Hash.sha256(Array.from(message));
   
-      // Hash the message using Hash.sha256
-      const sha256Message = Hash.sha256(Array.from(message)); // Convert message to number[] and hash it
-      console.log('Hashed Message (SHA-256):', sha256Message.toString());
-  
-      // Convert the signature buffer to a Signature object
-      const signature = Signature.fromDER(Array.from(signatureBuffer));
-      console.log('Converted Signature (from DER):', signature);
-  
-      // Verify the signature using the provided public key
-      const isSignatureValid = pubKey.verify(sha256Message, signature);
-      console.log('Signature Validity:', isSignatureValid);
-  
-      if (!isSignatureValid) {
-        console.log('Signature Failed Verification:', signature);
+      if (!pubKey.verify(sha256Message, signature)) {
         throw new Error('Invalid signature.');
       }
   
-      console.log('Commitment is valid');
+      console.log('Commitment is valid.');
       return true;
     } catch (error) {
       console.error('Commitment evaluation failed:', error);
@@ -222,40 +145,31 @@ private decodeOutputScript(outputScript: Buffer): Buffer[] {
 
     try {
       const privateKey = PrivateKey.fromString(privateKeyHex, 'hex');
-      const publicKey = privateKey.toPublicKey();
-      console.log('Derived public key from private key:', publicKey.toString());
-      return publicKey;
+      return privateKey.toPublicKey();
     } catch (error) {
-      console.error('Error deriving public key from private key:', error);
-      throw new Error('Failed to derive public key from private key.');
+      console.error('Error deriving public key:', error);
+      throw new Error('Failed to derive public key.');
     }
   }
 
-  private emitAdmissibilityEvent(eventData: any): void {
-    console.log('Emitting admissibility event:', eventData);
-    this.emit('admissibility', eventData);
+  private isValidURL(url: string): boolean {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private isValidSHA256(hash: string): boolean {
-    const isValid = /^[a-f0-9]{64}$/.test(hash);
-    console.log('Is valid SHA256 hash:', isValid, 'Hash:', hash);
-    return isValid;
-  }
-
-  private extractTxid(beef: number[]): string {
-    const txidBuffer = Buffer.from(beef.slice(0, 32));
-    return txidBuffer.toString('hex');
-  }
-
-  private extractOutputIndex(beef: number[]): number {
-    return beef[32];
+    return /^[a-f0-9]{64}$/.test(hash);
   }
 
   async getDocumentation(): Promise<string> {
     return 'UHRP Topic Manager Documentation';
   }
 
-  async getMetaData(): Promise<{ name: string; shortDescription: string; iconURL?: string; version?: string; informationURL?: string }> {
+  async getMetaData() {
     return {
       name: 'UHRP Topic Manager',
       shortDescription: 'Handles admissibility of outputs for the UHRP protocol.',

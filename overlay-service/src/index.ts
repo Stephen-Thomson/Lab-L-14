@@ -3,7 +3,7 @@ import path from 'path';
 import express from 'express';
 import bodyparser from 'body-parser';
 import { fileURLToPath } from 'url';
-import { Engine, KnexStorage } from '@bsv/overlay';
+import { Engine, KnexStorage, TaggedBEEF } from '@bsv/overlay';
 import { LookupService } from '../../lookup-service/src/LookupService.js';
 import { UHRPTopicManager } from '../../topic-manager/src/UHRPTopicManager.js';
 import { MongoClient } from 'mongodb';
@@ -47,19 +47,27 @@ const knexInstance = Knex({
 });
 
 // Initialize the Topic Manager and Overlay Services Engine
-let engine: Engine; // Use `Engine` class from `@bsv/overlay`
+let engine: Engine;
 
-// Topic Manager and Lookup Service setup
 const initializeOverlayService = async () => {
   const topicManager = new UHRPTopicManager();
 
   // Listen for admissibility events emitted by TopicManager
   topicManager.on('admissibility', async (eventData: any) => {
-    console.log('Admissibility event received:', eventData);
-    await lookupService.handleAdmissibilityEvent(eventData);
+    try {
+      console.log('Admissibility event received:', eventData);
+
+      await lookupService.outputAdded(
+        eventData.txid,
+        eventData.outputIndex,
+        eventData.outputScript,
+        eventData.topic
+      );
+    } catch (error) {
+      console.error('Error handling admissibility event:', error);
+    }
   });
 
-  // Create the overlay engine
   engine = new Engine(
     { 'tm_uhrp': topicManager },
     { 'ls_uhrp': lookupService },
@@ -70,7 +78,6 @@ const initializeOverlayService = async () => {
 
   console.log('Overlay service initialized with UHRP Topic Manager');
 };
-
 
 // Middleware for CORS
 app.use((req, res, next) => {
@@ -89,26 +96,38 @@ app.use((req, res, next) => {
 // Submit transactions
 app.post('/submit', async (req, res) => {
   try {
-    console.log('Incoming request payload (raw buffer):', req.body); // Log the raw buffer payload
+    console.log('Incoming request payload (raw buffer):', req.body);
     console.log('Request headers:', req.headers);
 
-    let parsedPayload;
-    if (Buffer.isBuffer(req.body)) {
-      // Convert the Buffer to a number array
-      const beefAsNumberArray = Array.from(req.body);
-
-      // Construct the parsed payload with beef as number array and topics as an array
-      parsedPayload = {
-        beef: beefAsNumberArray, // Use the number array representation of the buffer
-        topics: ['tm_uhrp'], // Ensure topics are provided correctly
-      };
-    } else {
+    if (!Buffer.isBuffer(req.body)) {
       throw new Error('Invalid buffer format: Expected a Buffer');
     }
 
-    console.log('Parsed request payload:', parsedPayload); // Log the parsed payload
+    const beefAsNumberArray = Array.from(req.body);
 
-    const result = await engine.submit(parsedPayload); // Submit through the overlay engine
+    // Extract topics from headers dynamically
+    const topicsHeader = req.headers['x-topics'];
+
+    // Handle both string and string[] cases gracefully
+    let topics: string[] = [];
+
+    if (Array.isArray(topicsHeader)) {
+      topics = topicsHeader.map((topic) => JSON.parse(topic));
+    } else if (typeof topicsHeader === 'string') {
+      topics = JSON.parse(topicsHeader);
+    } else {
+      console.warn('No valid topics found in headers.');
+    }
+
+    // Construct TaggedBEEF structure
+    const taggedBEEF: TaggedBEEF = {
+      beef: beefAsNumberArray,
+      topics,
+    };
+
+    console.log('Parsed request payload:', taggedBEEF);
+
+    const result = await engine.submit(taggedBEEF);
     res.status(200).json(result);
   } catch (error) {
     console.error('Submit error:', error);
@@ -119,15 +138,20 @@ app.post('/submit', async (req, res) => {
   }
 });
 
-
-
-
-
 // Lookup file storage commitments
 app.post('/lookup', async (req, res) => {
   try {
-    const query = req.body; // Expecting UHRP URL or retention period query
-    const result = await lookupService.findByUHRPUrl(query.uhrpUrl);
+    const { uhrpUrl } = req.body;
+
+    if (!uhrpUrl) {
+      return res.status(400).json({ error: 'UHRPUrl query parameter is required.' });
+    }
+
+    const result = await engine.lookup({
+      service: 'ls_uhrp',
+      query: { UHRPUrl: uhrpUrl },
+    });
+
     res.status(200).json(result);
   } catch (error) {
     console.error('Lookup error:', error);
@@ -141,8 +165,8 @@ app.post('/lookup', async (req, res) => {
 // Start MongoDB and Express Server
 const startServer = async () => {
   try {
-    await connectToMongoDB(); // Ensure MongoDB is connected
-    await initializeOverlayService(); // Initialize the overlay service
+    await connectToMongoDB();
+    await initializeOverlayService();
 
     app.listen(PORT, () => {
       console.log(`Overlay service running on port ${PORT}`);
