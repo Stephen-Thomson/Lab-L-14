@@ -116,6 +116,12 @@ export async function publishCommitment({
 
     // Convert the action to BEEF format before submitting
     console.log('Step 9: Converting action to BEEF format');
+    console.log('Inputs to toBEEFfromEnvelope:', {
+      rawTx: action.rawTx,
+      inputs: inputs,
+      txid: action.txid,
+    });
+    
     const beef = toBEEFfromEnvelope({
       rawTx: action.rawTx,
       inputs: inputs,

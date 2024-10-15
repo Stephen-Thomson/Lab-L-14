@@ -50,13 +50,13 @@ const connectToMongoDB = async () => {
 };
 
 // Set up Knex for MySQL storage
-const knexInstance = Knex(knexfile.devlopment);
+const knexInstance = Knex(knexfile.development); // Fixed typo
 
 let engine: Engine;
 
 const initializeOverlayService = async () => {
   const topicManager = new UHRPTopicManager();
-  await knexInstance.migrate.latest();
+  await knexInstance.migrate.latest(); // Ensure latest migrations are applied
 
   engine = new Engine(
     { 'tm_uhrp': topicManager },
