@@ -12,6 +12,8 @@ import {
   LookupAnswer, 
   LookupFormula 
 } from '@bsv/overlay';
+import { getURLForHash} from 'uhrp-url';
+
 
 const { PushDrop } = pushdrop;
 
@@ -41,13 +43,10 @@ export class LookupService implements ILookupService {
         return; // Skip decoding if it's not a PushDrop script
       }
   
-      const scriptBuffer = Buffer.from(scriptHex, 'hex');
-      console.log('Script Buffer (Hex):', scriptBuffer.toString('hex'));
-  
       // Decode the script using PushDrop
       let decoded;
       try {
-        decoded = PushDrop.decode(scriptBuffer); // Ensure decode only happens here
+        decoded = pushdrop.decode({script:scriptHex, fieldFormat:'buffer'}); // Ensure decode only happens here
         console.log('Decoded PushDrop output:', decoded);
       } catch (decodeError) {
         console.error('Error decoding script with PushDrop:', decodeError);
@@ -67,8 +66,8 @@ export class LookupService implements ILookupService {
       });
   
       // Extract and parse the necessary fields
-      const uhrpUrl = decodedFields[3]?.toString('utf8');
       const fileHash = decodedFields[2]?.toString('hex');
+      const uhrpUrl = getURLForHash(fileHash);
       const retentionPeriod = parseInt(decodedFields[5]?.toString('utf8'), 10);
       const size = parseInt(decodedFields[6]?.toString('utf8'), 10);
   

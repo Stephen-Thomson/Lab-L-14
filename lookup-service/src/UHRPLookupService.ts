@@ -8,15 +8,16 @@ interface UHRPStorage {
 }
 
 /**
- * Implements a UHRP lookup service
+ * Implements a UHRP lookup service that manages UTXOs and their metadata.
  */
 export class UHRPLookupService implements LookupService {
   constructor(public storage: UHRPStorage) {}
 
+  // Adds UTXO metadata to the database
   async outputAdded(
-    txid: string, 
-    outputIndex: number, 
-    outputScript: Script, 
+    txid: string,
+    outputIndex: number,
+    outputScript: Script,
     topic: string
   ): Promise<void> {
     const record = {
@@ -29,10 +30,12 @@ export class UHRPLookupService implements LookupService {
     await this.storage.saveRecord(record);
   }
 
+  // Removes UTXO metadata when it is spent
   async outputSpent(txid: string, outputIndex: number, topic: string): Promise<void> {
     await this.storage.deleteRecord(`${txid}-${outputIndex}`);
   }
 
+  // Handles queries for UTXO metadata
   async lookup(question: LookupQuestion): Promise<LookupAnswer | LookupFormula> {
     const query = question.query as Record<string, any>;
     const result = await this.storage.getRecord(query);
@@ -46,10 +49,12 @@ export class UHRPLookupService implements LookupService {
     return { type: 'freeform', result: 'No matching commitments found' };
   }
 
+  // Provides documentation for the service
   async getDocumentation(): Promise<string> {
     return 'This service supports UHRP commitments.';
   }
 
+  // Provides metadata about the service
   async getMetaData() {
     return {
       name: 'UHRP Lookup Service',

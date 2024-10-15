@@ -1,3 +1,5 @@
+declare module 'uhrp-url';
+
 // Define the structure of a file storage commitment in the database
 export interface FileCommitment {
   txid: string;                // Transaction ID where the commitment is stored
@@ -22,3 +24,4 @@ export interface FileCommitmentResponse {
   data?: FileCommitment | FileCommitment[]; // The file commitment(s) that match the query
   message?: string;             // Error or success message
 }
+

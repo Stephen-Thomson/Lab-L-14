@@ -43,22 +43,29 @@ export class UHRPTopicManager extends EventEmitter implements OverlayTopicManage
           return; // Skip if not a valid PushDrop script
         }
       
-        const scriptBuffer = Buffer.from(scriptHex, 'hex');
-        console.log(`Script Buffer for Output ${index}:`, scriptBuffer.toString('hex'));
-      
         try {
-          const decoded = PushDrop.decode({
-            script: scriptBuffer.toString('hex'),
+          const result = PushDrop.decode({
+            script: scriptHex,
             fieldFormat: 'buffer',
           });
+
+          const pubKey = PublicKey.fromString(result.lockingPublicKey)
+          const hasValidSignature = pubKey.verify(
+            Array.from(Buffer.concat(result.fields)),
+            Signature.fromDER(result.signature, 'hex')
+          )
+
+          if (!hasValidSignature) {
+            throw new Error('Invalid signature.');
+          }
       
-          const decodedFields = decoded.fields || [];
+          const decodedFields = result.fields || [];
           if (!Array.isArray(decodedFields)) {
             throw new Error('Invalid decoded fields.');
           }
       
           console.log('Decoded Fields:', decodedFields);
-          const pubKey = this.getPublicKeyFromPrivateKey();
+          
       
           const isAdmissible = this.evaluateCommitment(decodedFields, pubKey);
           if (isAdmissible) {
@@ -113,20 +120,9 @@ export class UHRPTopicManager extends EventEmitter implements OverlayTopicManage
         throw new Error('Invalid file size.');
       }
   
-      // Check if the signature field exists and is a valid buffer
-      const signatureField = fields[7];
-      if (!signatureField || !Buffer.isBuffer(signatureField)) {
-        console.error('Signature field is missing or invalid.');
-        return false; // Skip this output as it is not admissible
-      }
+      
   
-      const signature = Signature.fromDER(Array.from(signatureField));
-      const message = Buffer.concat(fields.slice(0, 7));
-      const sha256Message = Hash.sha256(Array.from(message));
-  
-      if (!pubKey.verify(sha256Message, signature)) {
-        throw new Error('Invalid signature.');
-      }
+      
   
       console.log('Commitment is valid.');
       return true;

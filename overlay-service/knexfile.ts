@@ -1,15 +1,16 @@
 import type { Knex } from 'knex'
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const knexfile: { [key: string]: Knex.Config } = {
   development: {
     client: 'mysql2',
-    connection: {
-      host: '127.0.0.1',
-      port: 3306,
-      user: 'overlayAdmin',
-      password: 'overlay123',
-      database: 'overlay'
-    },
+    connection: process.env.MYSQL_CONNECTION,
     pool: {
       min: 2, // Minimum number of connections in the pool
       max: 120, // Maximum number of connections in the pool
