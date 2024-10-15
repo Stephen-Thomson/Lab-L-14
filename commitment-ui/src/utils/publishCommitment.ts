@@ -123,12 +123,13 @@ export async function publishCommitment({
     });
     
     const beef = toBEEFfromEnvelope({
-      rawTx: action.rawTx,
-      inputs: inputs,
-      txid: action.txid,
+      rawTx: action.rawTx || '',
+      inputs: inputs || {},
+      txid: action.txid || '',
     }).beef;
-
+    
     console.log('BEEF format generated:', beef);
+    
     console.log('BEEF data to submit:', beef);
     console.log('Submitting to serviceURL:', serviceURL);
 

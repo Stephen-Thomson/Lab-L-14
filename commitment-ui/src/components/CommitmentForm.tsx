@@ -1,116 +1,100 @@
 import React, { useState } from 'react';
 import { Container, Typography, Box, TextField, Button } from '@mui/material';
 import { publishCommitment } from '../utils/publishCommitment';
+import { UHRPLookupService } from '../../../lookup-service/src/UHRPLookupService'; // Import the service
 import { PrivateKey, PublicKey } from '@bsv/sdk';
 import crypto from 'crypto';
-import bs58 from 'bs58'; // Base58 encoding library
+import bs58 from 'bs58';
 
-// Function to manually derive a Bitcoin address from the public key
+// Mock storage for testing purposes
+const mockStorage = {
+  saveRecord: async (record: any) => console.log('Saved:', record),
+  getRecord: async (query: any) => ({ outputIndex: 0, uhrpUrl: query.uhrpUrl }),
+  deleteRecord: async (id: string) => console.log('Deleted:', id),
+};
+
+// Initialize UHRPLookupService with the mock storage
+const lookupService = new UHRPLookupService(mockStorage);
+
+// Function to derive a Bitcoin address from a public key
 function deriveAddressFromPublicKey(publicKey: PublicKey): string {
-  const publicKeyHex = publicKey.toString(); // Get public key as a hex string
-  const publicKeyBuffer = Buffer.from(publicKeyHex, 'hex'); // Convert the hex string to a buffer
-
-  // Hash public key with SHA-256, then RIPEMD-160 using Node.js's crypto module
+  const publicKeyBuffer = Buffer.from(publicKey.toString(), 'hex');
   const sha256Hash = crypto.createHash('sha256').update(publicKeyBuffer).digest();
   const ripemd160Hash = crypto.createHash('ripemd160').update(sha256Hash).digest();
-
-  // Base58Check encode the RIPEMD-160 hash to get the address
-  const address = bs58.encode(ripemd160Hash);
-  return address;
+  return bs58.encode(ripemd160Hash);
 }
 
-// Utility function to validate URL format
+// Utility function to validate URLs
 const isValidURL = (url: string): boolean => {
   try {
     new URL(url);
     return true;
-  } catch (_) {
+  } catch {
     return false;
   }
 };
 
 const CommitmentForm: React.FC = () => {
-  // State variables to store form input values
   const [fileURL, setFileURL] = useState('');
   const [hostingTime, setHostingTime] = useState('');
+  const [uhrpUrl, setUhrpUrl] = useState(''); // Store the UHRP URL
+  const [lookupResult, setLookupResult] = useState<any>(null);
 
-  // Ninja Wallet Private Key
   const privateKeyHex = 'bf4d159ac007184e0d458b7d6e3deb0e645269f55f13ba10f24e654ffc194daa';
+  const privateKey = PrivateKey.fromString(privateKeyHex, 'hex');
+  const publicKey = PublicKey.fromPrivateKey(privateKey);
+  const address = deriveAddressFromPublicKey(publicKey);
 
-  // Create PrivateKey object and derive the public key
-  const privateKey = PrivateKey.fromString(privateKeyHex, 'hex'); // Convert private key from hex
-  const publicKey = PublicKey.fromPrivateKey(privateKey); // Derive public key from private key
-  const address = deriveAddressFromPublicKey(publicKey); // Derive Bitcoin address from public key
-
-  // Added console logs to track key and address generation
-  console.log('Private Key:', privateKeyHex);
-  console.log('Derived Public Key:', publicKey.toString());
   console.log('Derived Address:', address);
 
-  // Form submit handler to publish the file hosting commitment
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-  
-    // Validate inputs
-    if (!fileURL || !hostingTime) {
-      alert('Please provide valid inputs for the file URL and hosting time.');
+
+    if (!fileURL || !hostingTime || !isValidURL(fileURL)) {
+      alert('Please provide valid inputs.');
       return;
     }
-  
-    // Validate the URL format
-    if (!isValidURL(fileURL)) {
-      alert('Please provide a valid URL.');
-      return;
-    }
-  
-    // Validate hosting time (must be greater than 0)
-    const hostingDays = parseInt(hostingTime);
-    if (hostingDays <= 0) {
-      alert('Hosting time must be greater than 0.');
-      return;
-    }
-  
+
+    const hostingMinutes = parseInt(hostingTime) * 24 * 60;
+
     try {
-      // Convert hosting time to minutes
-      const hostingMinutes = hostingDays * 24 * 60;
-  
-      console.log('File URL:', fileURL);
-      console.log('Hosting Time (in days):', hostingTime);
-      console.log('Hosting Time (in minutes):', hostingMinutes);
-      console.log('Address:', address);
-  
-      // Call the publishCommitment utility function to submit the commitment
-      console.log('Calling publishCommitment with data:');
-      console.log({ fileURL, hostingMinutes, address });
-  
+      console.log('Submitting commitment:', { fileURL, hostingMinutes, address });
+
       const result = await publishCommitment({
         url: fileURL,
         hostingMinutes,
-        address, // Use derived address
-        topics: ['tm_uhrp'], // Include the topics array as expected by the server
+        address,
+        topics: ['tm_uhrp'],
         serviceURL: 'http://localhost:8081',
       });
-  
-      console.log('publishCommitment result:', result);
-  
-      alert('File storage commitment submitted successfully!');
+
+      console.log('Publish result:', result);
+      setUhrpUrl(result); // Store the UHRP URL for lookup
+      alert('Commitment submitted successfully!');
     } catch (error) {
-      // Enhanced error logging
-      if (error instanceof Error) {
-        console.error('Error submitting file storage commitment:', error.message);
-      } else {
-        console.error('Unknown error:', error);
-      }
-      alert('There was an error submitting the commitment.');
+      console.error('Error submitting commitment:', error);
+      alert('Failed to submit the commitment.');
     }
   };
-  
+
+  const handleLookup = async () => {
+    try {
+      console.log('Looking up commitment with UHRP URL:', uhrpUrl);
+      const question = { service: 'UHRPLookupService', query: { uhrpUrl } };
+      const result = await lookupService.lookup(question); // Perform lookup using UHRP URL
+      setLookupResult(result);
+      console.log('Lookup result:', result);
+    } catch (error) {
+      console.error('Error performing lookup:', error);
+      alert('Lookup failed.');
+    }
+  };
 
   return (
     <Container maxWidth="sm">
       <Box mt={5} p={3} border={1} borderRadius={4} borderColor="grey.300">
         <Typography variant="h4" gutterBottom>
-          Create File Storage Commitment
+          Create & Lookup File Storage Commitment
         </Typography>
         <form onSubmit={handleSubmit}>
           <TextField
@@ -131,16 +115,24 @@ const CommitmentForm: React.FC = () => {
             required
           />
           <Box mt={3}>
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              fullWidth
-            >
+            <Button type="submit" variant="contained" color="primary" fullWidth>
               Submit Commitment
             </Button>
           </Box>
         </form>
+
+        <Box mt={3}>
+          <Button variant="outlined" color="secondary" fullWidth onClick={handleLookup}>
+            Lookup Commitment by UHRP URL
+          </Button>
+        </Box>
+
+        {lookupResult && (
+          <Box mt={3} p={2} border={1} borderRadius={4} borderColor="grey.400">
+            <Typography variant="h6">Lookup Result:</Typography>
+            <pre>{JSON.stringify(lookupResult, null, 2)}</pre>
+          </Box>
+        )}
       </Box>
     </Container>
   );
